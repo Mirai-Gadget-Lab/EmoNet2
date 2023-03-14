@@ -1,9 +1,10 @@
 import torch
 from torch import nn
 import pytorch_lightning as pl
-from models.model_hf import *
+from models.model_hf import Emotion_MultinomialModel, Emotion_MMER
 import torchmetrics
 import torch.nn.functional as F
+
 class PL_model(pl.LightningModule):
     def __init__(self, train_config):
         super().__init__()

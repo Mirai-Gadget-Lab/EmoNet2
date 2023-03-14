@@ -2,7 +2,8 @@ from transformers import AutoModel, Wav2Vec2ForCTC
 from torch import nn
 import torch 
 from models.module import *
-    
+from models.tools import create_negative_samples
+
 class Emotion_MultinomialModel(nn.Module):
     def __init__(self, config):
         super(Emotion_MultinomialModel, self).__init__()
@@ -72,22 +73,24 @@ class Emotion_MMER(nn.Module):
         
         # pooling
         self.pool_layer = nn.AdaptiveAvgPool2d((1, 768))
-        
         self.emotion_out = nn.Linear(1536, 7)
             
     def forward(self, text_inputs, audio_inputs):
         
-        text_feat = self.text_encoder(**text_inputs)['last_hidden_state']
+        text_feat = self.text_encoder(**text_inputs)
+        pooled_text_feat = text_feat['pooler_output']
+        text_feat = text_feat['last_hidden_state']
+        
         audio_feat = self.audio_encoder(**audio_inputs)[0]
         
         h = self.MMER(text_feat, audio_feat)
-        
         pooled_audio = self.pool_layer(audio_feat)
         pooled_h = self.pool_layer(h)
         
         concated_feat = torch.cat([pooled_audio, pooled_h], dim=2).squeeze()
         
-        return self.emotion_out(concated_feat)
+        text_posneg, contrastive_label = create_negative_samples(pooled_text_feat)
+        return self.emotion_out(concated_feat), text_posneg, contrastive_label
     
     def MMER(self, text_feat, audio_feat):
         p = self.CMA_1(audio_feat, text_feat)
@@ -95,3 +98,4 @@ class Emotion_MMER(nn.Module):
         q = self.CMA_3(text_feat, audio_feat)
         b = self.gate_sigmoid(self.gate_linear(torch.cat([r, q],dim=2)))
         return self.projection(torch.cat([r, b], dim=2))
+    
