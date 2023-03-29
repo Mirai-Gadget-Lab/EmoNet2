@@ -58,8 +58,8 @@ class Emotion_MMER(nn.Module):
         self.config = config
         
         # Encoder
-        self.text_encoder = AutoModel.from_pretrained(config.text_encoder)
-        self.audio_encoder = Wav2Vec2ForCTC.from_pretrained(config.audio_processor)
+        self.text_encoder = AutoModel.from_pretrained(config['model']['text_encoder'])
+        self.audio_encoder = Wav2Vec2ForCTC.from_pretrained(config['model']['audio_processor'])
         self.audio_encoder.lm_head = nn.Linear(1024, 768)
         
         # MMER
@@ -90,7 +90,8 @@ class Emotion_MMER(nn.Module):
         concated_feat = torch.cat([pooled_audio, pooled_h], dim=2).squeeze()
         
         text_posneg, contrastive_label = create_negative_samples(pooled_text_feat)
-        return self.emotion_out(concated_feat), text_posneg, contrastive_label
+        l2_dist = 1 / torch.cdist(pooled_audio, text_posneg)
+        return self.emotion_out(concated_feat), l2_dist, contrastive_label
     
     def MMER(self, text_feat, audio_feat):
         p = self.CMA_1(audio_feat, text_feat)

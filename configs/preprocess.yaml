@@ -1,0 +1,6 @@
+path:
+  root_path: "./data/txt_wav"
+  csv_path: "./data/annotation.csv"
+norm:
+  normalized: True
+  remove_non_text: True
