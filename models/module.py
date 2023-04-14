@@ -4,7 +4,7 @@ import torch
 import numpy as np
 
 class CrossModalEncoder(nn.Module):
-    def __init__(self, hidden_size, n_head, dropout):
+    def __init__(self, hidden_size, n_head, dropout, kernel_size: list =[9, 1]):
         super(CrossModalEncoder, self).__init__()
         self.MHA = nn.MultiheadAttention(
             embed_dim=hidden_size, num_heads=n_head, batch_first=True)
@@ -12,17 +12,25 @@ class CrossModalEncoder(nn.Module):
         self.MHA_norm = nn.LayerNorm(hidden_size)
 
         # FFN
-        self.linear1 = nn.Linear(hidden_size, hidden_size*4)
-        self.dropout1 = nn.Dropout(dropout)
-        self.linear2 = nn.Linear(hidden_size*4, hidden_size)
-        self.dropout2 = nn.Dropout(dropout)
-        self.activation = nn.GELU()
+        self.w_1 = nn.Conv1d(
+            hidden_size, 
+            hidden_size*4,
+            kernel_size=kernel_size[0],
+            padding=(kernel_size[0]-1)//2
+        )
+        self.w_2 = nn.Conv1d(
+            hidden_size*4, 
+            hidden_size,
+            kernel_size=kernel_size[1],
+            padding=(kernel_size[1]-1)//2
+        )
+        self.dropout = nn.Dropout(dropout)
         self.FFN_norm = nn.LayerNorm(hidden_size)
         # 
     def forward(self, query, memory):
         x = query
         x = self.MHA_norm(x + self.attn_block(x, memory))
-        x = self.FFN_norm(x + self.ffn_block(x))    
+        x = self.FFN_norm(x + self.ffn_block(x))
         return x 
 
     def attn_block(self, query, memory):
@@ -30,5 +38,5 @@ class CrossModalEncoder(nn.Module):
         return self.MHA_dropout(x)
     
     def ffn_block(self, x):
-        x = self.linear2(self.dropout1(self.activation(self.linear1(x))))
-        return self.dropout2(x)
+        x = self.w_2(F.relu(self.w_1(x.transpose(1, 2)))).transpose(1, 2)
+        return self.dropout(x)

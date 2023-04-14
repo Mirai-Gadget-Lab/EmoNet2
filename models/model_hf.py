@@ -63,40 +63,33 @@ class Emotion_MMER(nn.Module):
         self.audio_encoder.lm_head = nn.Linear(1024, 768)
         
         # MMER
-        self.CMA_1 = CrossModalEncoder(768, 12, 0.3)
-        self.CMA_2 = CrossModalEncoder(768, 12, 0.3)
-        self.CMA_3 = CrossModalEncoder(768, 12, 0.3)
-        
-        self.gate_linear = nn.Linear(1536, 768, bias=True)
-        self.gate_sigmoid = nn.Sigmoid()
-        self.projection = nn.Linear(1536, 768, bias=False)
+        self.CMA_1 = CrossModalEncoder(768, config['model']['n_head'], config['model']['dropout_p'])
+        self.CMA_2 = CrossModalEncoder(768, config['model']['n_head'], config['model']['dropout_p'])
         
         # pooling
         self.pool_layer = nn.AdaptiveAvgPool2d((1, 768))
         self.emotion_out = nn.Linear(1536, 7)
-            
+        self.emotion_out_act = nn.Tanh()
+        self.emotion_out_dropout = nn.Dropout(config['model']['dropout_p'])
+        
+        self.cos_sim = nn.CosineSimilarity(dim=2)
     def forward(self, text_inputs, audio_inputs):
         
-        text_feat = self.text_encoder(**text_inputs)
-        pooled_text_feat = text_feat['pooler_output']
-        text_feat = text_feat['last_hidden_state']
-        
+        # Get features from each encoders
+        text_feat = self.text_encoder(**text_inputs)['last_hidden_state']
         audio_feat = self.audio_encoder(**audio_inputs)[0]
         
-        h = self.MMER(text_feat, audio_feat)
-        pooled_audio = self.pool_layer(audio_feat)
-        pooled_h = self.pool_layer(h)
+        # Cross attention each modality
+        pooled_text = self.pool_layer(self.CMA_1(text_feat, audio_feat)).squeeze()
+        pooled_audio = self.pool_layer(self.CMA_2(audio_feat, text_feat)).squeeze()
         
-        concated_feat = torch.cat([pooled_audio, pooled_h], dim=2).squeeze()
-        
-        text_posneg, contrastive_label = create_negative_samples(pooled_text_feat)
-        l2_dist = 1 / torch.cdist(pooled_audio, text_posneg)
-        return self.emotion_out(concated_feat), l2_dist, contrastive_label
-    
-    def MMER(self, text_feat, audio_feat):
-        p = self.CMA_1(audio_feat, text_feat)
-        r = self.CMA_2(text_feat, p)
-        q = self.CMA_3(text_feat, audio_feat)
-        b = self.gate_sigmoid(self.gate_linear(torch.cat([r, q],dim=2)))
-        return self.projection(torch.cat([r, b], dim=2))
+        # Get emotion output
+        concated_feat = torch.cat([pooled_audio, pooled_text], dim=1)
+        emotion_out = self.emotion_out_dropout(self.emotion_out_act(self.emotion_out(concated_feat)))
+
+        # Get constrastive out
+        text_posneg, contrastive_label = create_negative_samples(pooled_text.squeeze())
+        with torch.cuda.amp.autocast():
+            sim = self.cos_sim(pooled_audio.unsqueeze(1), text_posneg)
+        return emotion_out, sim, contrastive_label
     

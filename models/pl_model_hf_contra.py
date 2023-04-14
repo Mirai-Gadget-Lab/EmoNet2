@@ -5,6 +5,7 @@ from models.model_hf import Emotion_MMER
 import torchmetrics
 import torch.nn.functional as F
 from transformers import get_cosine_with_hard_restarts_schedule_with_warmup
+from deepspeed.ops.adam import DeepSpeedCPUAdam
 
 class PL_model(pl.LightningModule):
     def __init__(self, train_config):
@@ -12,7 +13,7 @@ class PL_model(pl.LightningModule):
         self.save_hyperparameters()
         self.model = Emotion_MMER(train_config)
         self.train_config = train_config
-        
+        self.loss_weight = self.train_config['model']['contra_loss_weight']
         # Define Accuracy
         self.train_accuracy = torchmetrics.Accuracy(task="multiclass", num_classes=7)
         self.valid_accuracy = torchmetrics.Accuracy(task="multiclass", num_classes=7)
@@ -25,11 +26,10 @@ class PL_model(pl.LightningModule):
     
     def training_step(self, batch, batch_idx):
         text_inputs, audio_inputs, labels = batch
-        emo_out, l2_dist, contrastive_label = self.forward(text_inputs, audio_inputs)
-        emo_loss, contra_loss= self.cal_loss(emo_out, labels['emotion'], l2_dist, contrastive_label)
+        emo_out, sim, contrastive_label = self.forward(text_inputs, audio_inputs)
+        emo_loss, contra_loss= self.cal_loss(emo_out, labels['emotion'], sim, contrastive_label)
         
         self.train_accuracy(emo_out, labels['emotion'])
-        
         loss = emo_loss + contra_loss
         self.log("train_full_loss",  loss, on_epoch=False, on_step=True)
         self.log("train_emotion_loss",  emo_loss, on_epoch=False, on_step=True)
@@ -40,8 +40,8 @@ class PL_model(pl.LightningModule):
 
     def validation_step(self, batch, batch_idx):
         text_inputs, audio_inputs, labels = batch
-        emo_out, l2_dist, contrastive_label = self.forward(text_inputs, audio_inputs)
-        emo_loss, contra_loss= self.cal_loss(emo_out, labels['emotion'], l2_dist, contrastive_label)
+        emo_out, sim, contrastive_label = self.forward(text_inputs, audio_inputs)
+        emo_loss, contra_loss= self.cal_loss(emo_out, labels['emotion'], sim, contrastive_label)
         
         self.valid_accuracy(emo_out, labels['emotion'])
         
@@ -58,7 +58,7 @@ class PL_model(pl.LightningModule):
         return pred, labels['emotion']
     
     def configure_optimizers(self):
-        optimizer = torch.optim.AdamW(
+        optimizer = DeepSpeedCPUAdam(
             self.model.parameters(), 
             betas=self.train_config["optimizer"]["betas"],
             eps=self.train_config["optimizer"]["eps"],
@@ -73,7 +73,7 @@ class PL_model(pl.LightningModule):
         )
         return [optimizer], [{"scheduler": scheduler, "interval": "step"}]
     
-    def cal_loss(self, emo_out, emo_label, l2_dist, contrastive_label):
-        emo_loss = self.ce(emo_out, emo_label)
-        contra_loss = self.ce(l2_dist.squeeze(), contrastive_label)
-        return emo_loss, contra_loss
+    def cal_loss(self, emo_out, emo_label, sim, contrastive_label):
+        emo_loss = (1 - self.loss_weight) * self.ce(emo_out, emo_label)
+        contra_loss = self.loss_weight * self.ce(sim, contrastive_label)
+        return emo_loss, contra_loss    

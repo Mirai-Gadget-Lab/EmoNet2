@@ -9,8 +9,8 @@ from sklearn.model_selection import train_test_split
 from torch.utils.data import DataLoader
 from transformers import AutoTokenizer, Wav2Vec2Processor
 from pytorch_lightning.callbacks import LearningRateMonitor
-from pytorch_lightning.strategies import DDPStrategy
 from omegaconf import OmegaConf as OC
+from pytorch_lightning.strategies import DeepSpeedStrategy
 
 def define_argparser():
     p = argparse.ArgumentParser()
@@ -22,7 +22,7 @@ def define_argparser():
 
 
 def main(args):
-    pl.seed_everything(42)
+    pl.seed_everything(1004)
     num_gpu = torch.cuda.device_count()
     train_config = OC.load(args.train_config)
     preprocess_config = OC.load(args.preprocess_config)
@@ -34,8 +34,8 @@ def main(args):
         
     csv['wav_length'] = csv['wav_end'] - csv['wav_start']
     csv = csv.query("wav_length <= %d"%25)
-    dev, _ = train_test_split(csv, test_size=0.2, random_state=1004)
-    train, val = train_test_split(dev, test_size=0.1, random_state=1004)
+    dev, _ = train_test_split(csv, test_size=0.2, random_state=1004, stratify=csv['emotion'])
+    train, val = train_test_split(dev, test_size=0.1, random_state=1004, stratify=dev['emotion'])
     
     text_tokenizer = AutoTokenizer.from_pretrained(train_config['model']['text_encoder'])
     audio_processor = Wav2Vec2Processor.from_pretrained(train_config['model']['audio_processor'])
@@ -43,11 +43,11 @@ def main(args):
     train_dataset = multimodal_dataset(train, preprocess_config)
     val_dataset = multimodal_dataset(val, preprocess_config)
     
-    train_loader = DataLoader(train_dataset, train_config['optimizer']['batch_size'], num_workers=8,
+    train_loader = DataLoader(train_dataset, train_config['optimizer']['batch_size'], num_workers=4,
                               collate_fn=multimodal_collator(text_tokenizer, audio_processor), pin_memory=True,
                               shuffle=True, drop_last=True)
     
-    val_loader = DataLoader(val_dataset, train_config['optimizer']['batch_size'], num_workers=8,
+    val_loader = DataLoader(val_dataset, train_config['optimizer']['batch_size'], num_workers=4,
                               collate_fn=multimodal_collator(text_tokenizer, audio_processor), pin_memory=True, 
                               drop_last=True, shuffle=False)
         
@@ -59,10 +59,10 @@ def main(args):
     
 
     checkpoint_callback = plc.ModelCheckpoint(
-        monitor="val_loss",
+        monitor="val_emotion_loss",
         dirpath=os.path.join(train_config['path']['ckpt_path'], train_config['path']['exp_name']),
-        filename="{step:06d}-{val_loss:.5f}",
-        save_top_k=10,
+        filename="{step:06d}-{val_emotion_loss:.5f}",
+        save_top_k=3,
         mode="min",
         every_n_train_steps=train_config['step']['save_step']
     )
@@ -74,7 +74,12 @@ def main(args):
     trainer = pl.Trainer(
         accelerator="gpu",
         devices=num_gpu,
-        strategy = DDPStrategy(find_unused_parameters=True),
+        strategy="deepspeed_stage_2_offload",
+        # strategy=DeepSpeedStrategy(
+        #     stage=3,
+        #     offload_optimizer=True,
+        #     offload_parameters=True,
+        # ),
         max_steps=train_config['step']['total_step'],
         enable_checkpointing=True,
         callbacks=[checkpoint_callback, lr_monitor],
@@ -82,8 +87,10 @@ def main(args):
         accumulate_grad_batches=train_config['trainer']['grad_acc'],
         logger=logger,
         gradient_clip_val=train_config['trainer']['grad_clip_thresh'],
+        precision=16,
     )
     trainer.fit(model)
+    
 if __name__ == '__main__':
     args = define_argparser()
     main(args)
