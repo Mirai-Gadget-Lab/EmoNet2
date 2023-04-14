@@ -3,3 +3,4 @@ librosa
 transformers
 pytorch-lightning==1.7.2
 scikit-learn==0.23.2
+omegaconf
