@@ -10,40 +10,40 @@ class Emotion_MultinomialModel(nn.Module):
         
         self.config = config
         
-        if config.using_model == 'both': 
-            self.text_encoder = AutoModel.from_pretrained(config.text_encoder)
-            self.audio_encoder = Wav2Vec2ForCTC.from_pretrained(config.audio_processor)
+        if config['model']['using_model'] == 'both': 
+            self.text_encoder = AutoModel.from_pretrained(config['model']['text_encoder'])
+            self.audio_encoder = Wav2Vec2ForCTC.from_pretrained(config['model']['audio_processor'])
             self.audio_encoder.lm_head = nn.Linear(1024, 768)
             self.audio_pool = nn.AdaptiveAvgPool2d((1, 768))
         
             self.emotion_out = nn.Linear(1536, 7)
 
-        elif config.using_model == 'audio':
-            self.audio_encoder =Wav2Vec2ForCTC.from_pretrained(config.audio_processor)
+        elif config['model']['using_model'] == 'audio':
+            self.audio_encoder =Wav2Vec2ForCTC.from_pretrained(config['model']['audio_processor'])
             self.audio_encoder.lm_head = nn.Linear(1024, 768)
             self.audio_pool = nn.AdaptiveAvgPool2d((1, 768))
             
             self.emotion_out = nn.Linear(768, 7)
             
-        elif config.using_model =='text':
-            self.text_encoder = AutoModel.from_pretrained(config.text_encoder)
+        elif config['model']['using_model'] =='text':
+            self.text_encoder = AutoModel.from_pretrained(config['model']['text_encoder'])
             self.emotion_out = nn.Linear(768, 7)
         else:
             raise "WrongModelName"
             
     def forward(self, text_inputs, audio_inputs):
         
-        if self.config.using_model == 'both': 
+        if self.config['model']['using_model'] == 'both': 
             text_feat = self.text_encoder(**text_inputs)['pooler_output']
             audio_feat = self.audio_encoder(**audio_inputs)[0]
             audio_feat = self.audio_pool(audio_feat).squeeze()
             
             feat = torch.cat([text_feat, audio_feat], dim=1)
             
-        elif self.config.using_model == 'text':
+        elif self.config['model']['using_model'] == 'text':
             feat = self.text_encoder(**text_inputs)['pooler_output']
         
-        elif self.config.using_model == 'audio':
+        elif self.config['model']['using_model'] == 'audio':
             feat = self.audio_encoder(**audio_inputs)[0]
             feat = self.audio_pool(feat).squeeze()
             
@@ -92,4 +92,3 @@ class Emotion_MMER(nn.Module):
         with torch.cuda.amp.autocast():
             sim = self.cos_sim(pooled_audio.unsqueeze(1), text_posneg)
         return emotion_out, sim, contrastive_label
-    

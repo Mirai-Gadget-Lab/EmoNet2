@@ -1,6 +1,8 @@
-from config import HF_DataConfig, HF_TrainConfig
 import os
 from models.pl_model_hf import *
+
+import os
+from models.pl_model_hf_contra import PL_model
 import pytorch_lightning as pl
 from dataset_hf import *
 import pytorch_lightning.callbacks as plc
@@ -9,14 +11,18 @@ import argparse
 from sklearn.model_selection import train_test_split
 from torch.utils.data import DataLoader
 from transformers import AutoTokenizer, Wav2Vec2Processor
+from pytorch_lightning.callbacks import LearningRateMonitor
+from omegaconf import OmegaConf as OC
+from pytorch_lightning.strategies import DeepSpeedStrategy
 
 def define_argparser():
     p = argparse.ArgumentParser()
+    p.add_argument("-t", '--train_config', default='./configs/train.yaml', type=str)
+    p.add_argument("-p", '--preprocess_config', default='./configs/preprocess.yaml', type=str)
     p.add_argument('--exp_name', required=True, type=str)
     p.add_argument('--using_model', required=True, type=str)
-    p.add_argument('--batch_size', required=True, type=int)
-    p.add_argument('--accumulate_grad', required=True, type=int, default=1)
-    p.add_argument('--clip_length', type=int, default=25)
+    p.add_argument('--batch_size', type=int, default=64)
+    p.add_argument('--accumulate_grad', type=int, default=1)
     p.add_argument('--loss', type=str, default="ce")
     config = p.parse_args()
 
@@ -24,36 +30,58 @@ def define_argparser():
 
 
 def main(args):
-    pl.seed_everything(42)
+    pl.seed_everything(1004)
     num_gpu = torch.cuda.device_count()
-    data_config = HF_DataConfig()
-    train_config = HF_TrainConfig(
-        batch_size=args.batch_size,
-        using_model=args.using_model
+    train_config = OC.load(args.train_config)
+    preprocess_config = OC.load(args.preprocess_config)
+
+    train_config['path']['exp_name'] = args.exp_name
+    train_config['optimizer']['batch_size'] = args.batch_size
+    train_config['trainer']['grad_acc'] = args.accumulate_grad
+    train_config['model']['using_model'] = args.using_model
+    # Load train and validation data
+    csv = pd.read_csv(preprocess_config['path']['csv_path'])
+    csv = csv.drop_duplicates(subset=['segment_id'], ignore_index=True)
+        
+    csv['wav_length'] = csv['wav_end'] - csv['wav_start']
+    csv = csv.query("wav_length <= %d"%25)
+    dev, _ = train_test_split(csv, test_size=0.2, random_state=1004, stratify=csv['emotion'])
+    train, val = train_test_split(dev, test_size=0.1, random_state=1004, stratify=dev['emotion'])
+    
+    text_tokenizer = AutoTokenizer.from_pretrained(train_config['model']['text_encoder'])
+    audio_processor = Wav2Vec2Processor.from_pretrained(train_config['model']['audio_processor'])
+    
+    train_dataset = multimodal_dataset(train, preprocess_config)
+    val_dataset = multimodal_dataset(val, preprocess_config)
+    
+    print(
+        '|train| =', len(train_dataset),
+        '|valid| =', len(val_dataset),
     )
 
-    # Load train and validation data
-    csv = pd.read_csv(data_config.csv_path)
-    csv = csv.drop_duplicates(subset=['segment_id'], ignore_index=True)
+    total_batch_size = train_config['optimizer']['batch_size'] * torch.cuda.device_count()
+    n_total_iterations = int(len(train_dataset) / (total_batch_size * train_config['trainer']['grad_acc']) * train_config['step']['max_epochs'])
+    n_warmup_steps = int(n_total_iterations * train_config['step']['warmup_ratio'])
     
-    csv['wav_length'] = csv['wav_end'] - csv['wav_start']
-    csv = csv.query("wav_length <= %d"%args.clip_length)
-    dev, _ = train_test_split(csv, test_size=0.2, random_state=1004)
-    train, val = train_test_split(dev, test_size=0.1, random_state=1004)
+    train_config['step']['total_step'] = n_total_iterations
+    train_config['step']['warm_up_step'] = n_warmup_steps
     
-    text_tokenizer = AutoTokenizer.from_pretrained(train_config.text_encoder)
-    audio_processor = Wav2Vec2Processor.from_pretrained(train_config.audio_processor)
+    print(
+        '#total_iters =', n_total_iterations,
+        '#warmup_iters =', n_warmup_steps,
+    )
     
-    train_dataset = multimodal_dataset(train, data_config)
-    val_dataset = multimodal_dataset(val, data_config)
+    train_loader = DataLoader(
+        train_dataset, train_config['optimizer']['batch_size'], num_workers=4,
+        collate_fn=multimodal_collator(text_tokenizer, audio_processor), pin_memory=True,
+        shuffle=True, drop_last=True
+    )
     
-    train_loader = DataLoader(train_dataset, train_config.batch_size, num_workers=8,
-                              collate_fn=multimodal_collator(text_tokenizer, audio_processor), pin_memory=True,
-                              shuffle=True, drop_last=True)
-    
-    val_loader = DataLoader(val_dataset, train_config.batch_size, num_workers=8,
-                              collate_fn=multimodal_collator(text_tokenizer, audio_processor), pin_memory=True, 
-                              drop_last=True, shuffle=False)
+    val_loader = DataLoader(
+        val_dataset, train_config['optimizer']['batch_size'], num_workers=4,
+        collate_fn=multimodal_collator(text_tokenizer, audio_processor), pin_memory=True, 
+        drop_last=True, shuffle=False
+    )
         
     # Load model and configuration.
     
@@ -68,28 +96,29 @@ def main(args):
         
     checkpoint_callback = plc.ModelCheckpoint(
         monitor="val_loss",
-        dirpath=os.path.join(train_config.checkpoint_path, args.exp_name),
-        filename="{epoch:02d}-{val_loss:.5f}",
-        save_top_k=1,
+        dirpath=os.path.join(train_config['path']['ckpt_path'], train_config['path']['exp_name']),
+        filename="{step:06d}-{val_loss:.5f}",
+        save_top_k=3,
         mode="min",
+        every_n_train_steps=train_config['step']['total_step'] // 10 
     )
-
-    logger = TensorBoardLogger(train_config.log_dir, name=args.exp_name)
-
+    logger = TensorBoardLogger(
+        train_config['path']['log_path'], name=train_config['path']['exp_name'])
+    lr_monitor = LearningRateMonitor(logging_interval='step')
+    
     trainer = pl.Trainer(
         accelerator="gpu",
         devices=num_gpu,
-        strategy="ddp",
-        max_epochs=15,
-        checkpoint_callback=True,
-        callbacks=[checkpoint_callback],
-        precision=16,
-        amp_backend="native",
+        strategy="deepspeed_stage_2",
+        max_steps=train_config['step']['total_step'],
+        enable_checkpointing=True,
+        callbacks=[checkpoint_callback, lr_monitor],
         profiler="simple",
-        accumulate_grad_batches=args.accumulate_grad,
+        accumulate_grad_batches=train_config['trainer']['grad_acc'],
         logger=logger,
-        gradient_clip_val=2,
-        )
+        gradient_clip_val=train_config['trainer']['grad_clip_thresh'],
+        precision=16,
+    )
     
     trainer.fit(model)
     

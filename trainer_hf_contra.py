@@ -1,5 +1,5 @@
 import os
-from models.pl_model_hf_contra import PL_model
+from models.pl_model_hf import PL_model
 import pytorch_lightning as pl
 from dataset_hf import *
 import pytorch_lightning.callbacks as plc
@@ -16,6 +16,9 @@ def define_argparser():
     p = argparse.ArgumentParser()
     p.add_argument("-t", '--train_config', default='./configs/train.yaml', type=str)
     p.add_argument("-p", '--preprocess_config', default='./configs/preprocess.yaml', type=str)
+    p.add_argument('--exp_name', required=True, type=str)
+    p.add_argument('--batch_size', type=int, default=12)
+    p.add_argument('--accumulate_grad', type=int, default=1)
     config = p.parse_args()
 
     return config
@@ -27,7 +30,10 @@ def main(args):
     train_config = OC.load(args.train_config)
     preprocess_config = OC.load(args.preprocess_config)
 
-
+    train_config['path']['exp_name'] = args.exp_name
+    train_config['optimizer']['batch_size'] = args.batch_size
+    train_config['trainer']['grad_acc'] = args.accumulate_grad
+    
     # Load train and validation data
     csv = pd.read_csv(preprocess_config['path']['csv_path'])
     csv = csv.drop_duplicates(subset=['segment_id'], ignore_index=True)
@@ -42,14 +48,36 @@ def main(args):
     
     train_dataset = multimodal_dataset(train, preprocess_config)
     val_dataset = multimodal_dataset(val, preprocess_config)
+
+    print(
+        '|train| =', len(train_dataset),
+        '|valid| =', len(val_dataset),
+    )
+
+    total_batch_size = train_config['optimizer']['batch_size'] * torch.cuda.device_count()
+    n_total_iterations = int(len(train_dataset) / (total_batch_size * train_config['trainer']['grad_acc']) * train_config['step']['max_epochs'])
+    n_warmup_steps = int(n_total_iterations * train_config['step']['warmup_ratio'])
     
-    train_loader = DataLoader(train_dataset, train_config['optimizer']['batch_size'], num_workers=4,
-                              collate_fn=multimodal_collator(text_tokenizer, audio_processor), pin_memory=True,
-                              shuffle=True, drop_last=True)
+    train_config['step']['total_step'] = n_total_iterations
+    train_config['step']['warm_up_step'] = n_warmup_steps
     
-    val_loader = DataLoader(val_dataset, train_config['optimizer']['batch_size'], num_workers=4,
-                              collate_fn=multimodal_collator(text_tokenizer, audio_processor), pin_memory=True, 
-                              drop_last=True, shuffle=False)
+    print(
+        '#total_iters =', n_total_iterations,
+        '#warmup_iters =', n_warmup_steps,
+    )
+    
+    train_loader = DataLoader(
+        train_dataset, train_config['optimizer']['batch_size'], num_workers=4,
+        collate_fn=multimodal_collator(text_tokenizer, audio_processor), pin_memory=True,
+        shuffle=True, drop_last=True
+    )
+    
+    val_loader = DataLoader(
+        val_dataset, train_config['optimizer']['batch_size'], num_workers=4,
+        collate_fn=multimodal_collator(text_tokenizer, audio_processor), pin_memory=True, 
+        drop_last=True, shuffle=False
+    )
+        
         
     # Load model and configuration.
     model = PL_model(train_config)
@@ -64,9 +92,8 @@ def main(args):
         filename="{step:06d}-{val_emotion_loss:.5f}",
         save_top_k=3,
         mode="min",
-        every_n_train_steps=train_config['step']['save_step']
+        every_n_train_steps=train_config['step']['total_step'] // 10 
     )
-
     logger = TensorBoardLogger(
         train_config['path']['log_path'], name=train_config['path']['exp_name'])
     lr_monitor = LearningRateMonitor(logging_interval='step')
@@ -74,12 +101,7 @@ def main(args):
     trainer = pl.Trainer(
         accelerator="gpu",
         devices=num_gpu,
-        strategy="deepspeed_stage_2_offload",
-        # strategy=DeepSpeedStrategy(
-        #     stage=3,
-        #     offload_optimizer=True,
-        #     offload_parameters=True,
-        # ),
+        strategy="deepspeed_stage_2",
         max_steps=train_config['step']['total_step'],
         enable_checkpointing=True,
         callbacks=[checkpoint_callback, lr_monitor],
@@ -89,6 +111,7 @@ def main(args):
         gradient_clip_val=train_config['trainer']['grad_clip_thresh'],
         precision=16,
     )
+    
     trainer.fit(model)
     
 if __name__ == '__main__':
