@@ -2,7 +2,7 @@ import os
 from models.pl_model_hf import *
 
 import os
-from models.pl_model_hf_contra import PL_model
+from models.pl_model_hf import PL_model
 import pytorch_lightning as pl
 from dataset_hf import *
 import pytorch_lightning.callbacks as plc
