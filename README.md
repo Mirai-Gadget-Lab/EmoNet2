@@ -1,21 +1,24 @@
 # Multimodal_Emotion_Recognition
 
-MultiModal Emotion Recognition using Cross modal Interaction module and multiloss
+MultiModal Emotion Recognition using Cross modal Attention module and Contrastive loss
 
 - Data: [KEMDy19](https://nanum.etri.re.kr/share/kjnoh/KEMDy19?lang=ko_KR)
 - Modality: Audio, Text
 
+<img src="result/model_figure.png" width=900> 
+
+
 # Installation
-## Requirements
+## Experiment setting
 
 - Linux
-- Python 3.7+
-- PyTorch 1.11.0 or higher and CUDA
+- Python 3.8.16
+- PyTorch 1.13.1 and CUDA 11.7
 
 a. Create a conda virtual environment and activate it.
 
 ```shell
-conda create -n MER python=3.7
+conda create -n MER python=3.8
 conda activate MER
 ```
 
@@ -23,16 +26,20 @@ b. Install PyTorch and torchvision following the [official instructions](https:/
 
 c. Clone this repository.
 
-```shell
-git clone https://github.com/Mirai-Gadget-Lab/Multimodal_Emotion_Recognition
-cd Multimodal_Emotion_Recognition
-```
-
 d. Install requirments.
 
 ```shell
 pip install -r requirements.txt
 ```
+
+e. Install DeepSpeed
+
+Note that, installing Deepspeed is not comfortable someone, please refer [official github](https://github.com/microsoft/DeepSpeed)
+
+```shell
+bash install.sh
+```
+
 
 # Prepare for training
 
@@ -52,12 +59,6 @@ Here is the preprocess flow chart.
 Note that, wav_length cliping is conducted in train_hf.sh or inference.py 
 
 
-b. Set config
-
-Change config.py for your environment.
-
-But, i recommand default config setting.
-
 # Train 
 
 Run Training code
@@ -66,16 +67,33 @@ Run Training code
 bash train_hf.sh
 ```
 
-Check your GPU, and change train_hf.sh properly.
+Check your GPU, and change train_hf.sh and configs properly.
+
+# Tensorboard 
+
+You can run tensorboard 
+
+```shell
+tensorboard --logdir ./output/log/audio_ce/version_0
+```
 
 # Inference
 
-if you train the model your self using above code, execute below codes.
+First you need to collate the model weights using
 
 ```shell
-CUDA_VISIBLE_DEVICES=0 python inference.py --model_save_path ./models_zoo/checkpoint/
+python make_model_weights.py
+```
+
+Because this repository use deepspeed stage 2, model weights sharded between gpus. After that,
+
+```shell
+CUDA_VISIBLE_DEVICES=0 python inference.py
 ```
 
 # Result
 
-<img src="result/result.png" width=900> 
+In table, CE means cross entropy and contra means contrastive loss repectively.
+Multimodal(concat) represents using concatenate for multimodal modeling and Multimodal(CMA) represents using cross modal attention respectively.
+
+<img src="result/metric.png" width=900> 

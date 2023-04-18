@@ -17,6 +17,7 @@ def define_argparser():
     p.add_argument('--model_save_path', default='./output/ckpt/', type=str)
     p.add_argument('--train_config', default='./configs/train.yaml', type=str)
     p.add_argument('--preprocess_config', default='./configs/preprocess.yaml', type=str)
+    p.add_argument('--out_path', default='./result/metrics.csv', type=str)
     config = p.parse_args()
 
     return config
@@ -94,7 +95,7 @@ def main(args):
             "accuracy": acc,
             "f1_score": f1,
         })
-    pd.DataFrame(dict_ls).to_csv('./result.csv', index=False)
+    pd.DataFrame(dict_ls).to_csv(args.out_path, index=False)
 # %%
 if __name__ == '__main__':
     args = define_argparser()
