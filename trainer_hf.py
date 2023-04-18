@@ -98,7 +98,7 @@ def main(args):
         monitor="val_loss",
         dirpath=os.path.join(train_config['path']['ckpt_path'], train_config['path']['exp_name']),
         filename="{step:06d}-{val_loss:.5f}",
-        save_top_k=3,
+        save_top_k=1,
         mode="min",
         every_n_train_steps=train_config['step']['total_step'] // 10 
     )
