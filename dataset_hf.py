@@ -8,8 +8,8 @@ class multimodal_dataset(Dataset):
     
     def __init__(self, csv, config):
         self.csv = csv
-        self.root_path = config.root_path
-        self.remove_non_text = config.remove_non_text
+        self.root_path = config['path']['root_path']
+        self.remove_non_text = config['norm']['remove_non_text']
         
     def __len__(self):
         return len(self.csv)
@@ -66,18 +66,6 @@ class multimodal_collator():
         emotion = [d['emotion'] for d in batch]
         valence = [d['valence'] for d in batch]
         arousal = [d['arousal'] for d in batch]
-        # text_length = [len(d['text']) for d in batch]
-        
-        # text = [i for i, _ in sorted(
-        #     zip(text, text_length), key=lambda x: x[1], reverse=True)]
-        # wav = [i for i, _ in sorted(
-        #     zip(wav, text_length), key=lambda x: x[1], reverse=True)]
-        # emotion = [i for i, _ in sorted(
-        #     zip(emotion, text_length), key=lambda x: x[1], reverse=True)]
-        # valence = [i for i, _ in sorted(
-        #     zip(valence, text_length), key=lambda x: x[1], reverse=True)]
-        # arousal = [i for i, _ in sorted(
-        #     zip(arousal, text_length), key=lambda x: x[1], reverse=True)]
         
         text_inputs = self.text_tokenizer(
             text,

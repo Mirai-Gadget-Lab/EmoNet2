@@ -1,8 +1,5 @@
 import os
-from models.pl_model_hf import *
-
-import os
-from models.pl_model_hf_contra import PL_model
+from models.pl_model_hf import PL_model
 import pytorch_lightning as pl
 from dataset_hf import *
 import pytorch_lightning.callbacks as plc
@@ -20,10 +17,8 @@ def define_argparser():
     p.add_argument("-t", '--train_config', default='./configs/train.yaml', type=str)
     p.add_argument("-p", '--preprocess_config', default='./configs/preprocess.yaml', type=str)
     p.add_argument('--exp_name', required=True, type=str)
-    p.add_argument('--using_model', required=True, type=str)
-    p.add_argument('--batch_size', type=int, default=64)
+    p.add_argument('--batch_size', type=int, default=12)
     p.add_argument('--accumulate_grad', type=int, default=1)
-    p.add_argument('--loss', type=str, default="ce")
     config = p.parse_args()
 
     return config
@@ -38,7 +33,7 @@ def main(args):
     train_config['path']['exp_name'] = args.exp_name
     train_config['optimizer']['batch_size'] = args.batch_size
     train_config['trainer']['grad_acc'] = args.accumulate_grad
-    train_config['model']['using_model'] = args.using_model
+    
     # Load train and validation data
     csv = pd.read_csv(preprocess_config['path']['csv_path'])
     csv = csv.drop_duplicates(subset=['segment_id'], ignore_index=True)
@@ -53,7 +48,7 @@ def main(args):
     
     train_dataset = multimodal_dataset(train, preprocess_config)
     val_dataset = multimodal_dataset(val, preprocess_config)
-    
+
     print(
         '|train| =', len(train_dataset),
         '|valid| =', len(val_dataset),
@@ -83,21 +78,18 @@ def main(args):
         drop_last=True, shuffle=False
     )
         
+        
     # Load model and configuration.
+    model = PL_model(train_config)
     
-    if args.loss == "ce":
-        model = PL_model_ce(train_config)
-    elif args.loss == "cs_and_ce":
-        model = PL_model(train_config)
-    else:
-        raise "WrongLossName"
     setattr(model, 'train_dataloader', lambda: train_loader)
     setattr(model, 'val_dataloader', lambda: val_loader)
-        
+    
+
     checkpoint_callback = plc.ModelCheckpoint(
-        monitor="val_loss",
+        monitor="val_emotion_loss",
         dirpath=os.path.join(train_config['path']['ckpt_path'], train_config['path']['exp_name']),
-        filename="{step:06d}-{val_loss:.5f}",
+        filename="{step:06d}-{val_emotion_loss:.5f}",
         save_top_k=3,
         mode="min",
         every_n_train_steps=train_config['step']['total_step'] // 10 

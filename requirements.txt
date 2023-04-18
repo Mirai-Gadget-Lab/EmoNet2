@@ -1,5 +1,6 @@
 pandas
 librosa
-transformers==4.12.3
+transformers==4.27.3
 pytorch-lightning==1.7.2
 scikit-learn==0.23.2
+omegaconf
