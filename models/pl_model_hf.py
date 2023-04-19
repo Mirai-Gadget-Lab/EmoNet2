@@ -58,7 +58,7 @@ class PL_model(pl.LightningModule):
     
     def configure_optimizers(self):
         # optimizer = DeepSpeedCPUAdam(
-        optimizer = torch.optim.RAdam(
+        optimizer = torch.optim.AdamW(
             self.model.parameters(), 
             betas=self.train_config["optimizer"]["betas"],
             eps=self.train_config["optimizer"]["eps"],

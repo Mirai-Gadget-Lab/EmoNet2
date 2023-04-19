@@ -18,7 +18,7 @@ def define_argparser():
     p.add_argument('--config_path', default='./output/log/', type=str)
     p.add_argument('--train_config', default='./configs/train.yaml', type=str)
     p.add_argument('--preprocess_config', default='./configs/preprocess.yaml', type=str)
-    p.add_argument('--out_path', default='./result/metrics_2.csv', type=str)
+    p.add_argument('--out_path', default='./result/metrics.csv', type=str)
     config = p.parse_args()
 
     return config
@@ -57,8 +57,7 @@ def main(args):
     trainer = Trainer(gpus=1,
                     logger=False)
     
-    # ckpt_path = sorted(glob(os.path.join(args.model_save_path, '*')))
-    ckpt_path = [os.path.join(args.model_save_path, 'both_cma'), os.path.join(args.model_save_path, 'both_contra')]
+    ckpt_path = sorted(glob(os.path.join(args.model_save_path, '*')))
     dict_ls = []
     for path in ckpt_path:
         model_name = os.path.basename(path)
