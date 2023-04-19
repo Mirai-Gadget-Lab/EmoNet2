@@ -2,3 +2,4 @@ data/*
 models_zoo/*
 output*/*
 __pycache__/
+result/*.csv

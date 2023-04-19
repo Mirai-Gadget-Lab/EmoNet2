@@ -7,6 +7,8 @@ MultiModal Emotion Recognition using Cross modal Attention module and Contrastiv
 
 <img src="result/model_figure.png" width=900> 
 
+<img src="result/model_figure_2.png" width=900> 
+
 
 # Installation
 ## Experiment setting
@@ -101,7 +103,7 @@ CUDA_VISIBLE_DEVICES=0 python inference.py
 
 # Result
 
-In table, CE means cross entropy and contra means contrastive loss repectively.
-Multimodal(concat) represents using concatenate for multimodal modeling and Multimodal(CMA) represents using cross modal attention respectively.
+In table, CE means cross entropy and CA means contrastive loss repectively.
+Multimodal(CAT) represents using concatenate for multimodal modeling and Multimodal(CMA) represents using cross modal attention respectively.
 
 <img src="result/metric.png" width=900> 
