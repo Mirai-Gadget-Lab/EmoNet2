@@ -45,7 +45,7 @@ def main(args):
     csv['wav_length'] = csv['wav_end'] - csv['wav_start']
     csv = csv.query("wav_length <= %d"%25)
     dev, _ = train_test_split(csv, test_size=0.2, random_state=1004, stratify=csv['emotion'])
-    train, val = train_test_split(dev, test_size=0.2, random_state=1004, stratify=dev['emotion'])
+    train, val = train_test_split(dev, test_size=0.1, random_state=1004, stratify=dev['emotion'])
     
     text_tokenizer = AutoTokenizer.from_pretrained(train_config['model']['text_encoder'])
     audio_processor = Wav2Vec2Processor.from_pretrained(train_config['model']['audio_processor'])
