@@ -34,9 +34,6 @@ pip install -r requirements.txt
 
 e. Install DeepSpeed
 
-
-Please check for install [DeepSpeed official github](https://github.com/microsoft/DeepSpeed)
-
 First you need libaio-dev. please install by
 
 ```shell
@@ -49,6 +46,7 @@ After this, install deepspeed by
 bash install.sh
 ```
 
+Please check for detail installation [DeepSpeed official github](https://github.com/microsoft/DeepSpeed)
 
 # Prepare for training
 
