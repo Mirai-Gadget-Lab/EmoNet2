@@ -30,26 +30,33 @@ class Emotion_MultinomialModel(nn.Module):
             self.emotion_out = nn.Linear(768, 7)
         else:
             raise "WrongModelName"
-            
+
+        if self.config['model']['using_contra']:
+            self.cos_sim = nn.CosineSimilarity(dim=2)
     def forward(self, text_inputs, audio_inputs):
         
+        sim = None
+        contrastive_label = None
         if self.config['model']['using_model'] == 'both': 
             text_feat = self.text_encoder(**text_inputs)['pooler_output']
             audio_feat = self.audio_encoder(**audio_inputs)[0]
             audio_feat = self.audio_pool(audio_feat).squeeze()
             
             feat = torch.cat([text_feat, audio_feat], dim=1)
-            
+
+            if self.config['model']['using_contra']:
+                text_posneg, contrastive_label = create_negative_samples(text_feat.squeeze())
+                with torch.cuda.amp.autocast():
+                    sim = self.cos_sim(audio_feat.unsqueeze(1), text_posneg)
+                
         elif self.config['model']['using_model'] == 'text':
             feat = self.text_encoder(**text_inputs)['pooler_output']
-        
         elif self.config['model']['using_model'] == 'audio':
             feat = self.audio_encoder(**audio_inputs)[0]
             feat = self.audio_pool(feat).squeeze()
-            
         pred_emotion = self.emotion_out(feat)
         
-        return pred_emotion
+        return pred_emotion, sim, contrastive_label
     
 class Emotion_MMER(nn.Module):
     def __init__(self, config):
@@ -72,9 +79,12 @@ class Emotion_MMER(nn.Module):
         self.emotion_out_act = nn.Tanh()
         self.emotion_out_dropout = nn.Dropout(config['model']['dropout_p'])
         
-        self.cos_sim = nn.CosineSimilarity(dim=2)
+        if self.config['model']['using_contra']:
+            self.cos_sim = nn.CosineSimilarity(dim=2)
     def forward(self, text_inputs, audio_inputs):
         
+        sim = None
+        contrastive_label = None
         # Get features from each encoders
         text_feat = self.text_encoder(**text_inputs)['last_hidden_state']
         audio_feat = self.audio_encoder(**audio_inputs)[0]
@@ -88,7 +98,8 @@ class Emotion_MMER(nn.Module):
         emotion_out = self.emotion_out_dropout(self.emotion_out_act(self.emotion_out(concated_feat)))
 
         # Get constrastive out
-        text_posneg, contrastive_label = create_negative_samples(pooled_text.squeeze())
-        with torch.cuda.amp.autocast():
-            sim = self.cos_sim(pooled_audio.unsqueeze(1), text_posneg)
+        if self.config['model']['using_contra']:
+            text_posneg, contrastive_label = create_negative_samples(pooled_text.squeeze())
+            with torch.cuda.amp.autocast():
+                sim = self.cos_sim(pooled_audio.unsqueeze(1), text_posneg)
         return emotion_out, sim, contrastive_label

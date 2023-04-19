@@ -4,3 +4,5 @@ transformers==4.27.3
 pytorch-lightning==1.7.2
 scikit-learn==0.23.2
 omegaconf
+ninja==1.11.1
+absl-py==1.4.0

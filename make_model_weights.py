@@ -9,7 +9,7 @@ def define_argparser():
     return config
 
 def main(args):
-    pathes = glob(os.path.join(args.model_save_path, '*/*'))
+    pathes = glob(os.path.join(args.model_save_path, '*/*.ckpt'))
     for ckpt_path in pathes:
         save_path = os.path.join(os.path.dirname(ckpt_path), 'model_weights')
         os.makedirs(save_path, exist_ok=True)

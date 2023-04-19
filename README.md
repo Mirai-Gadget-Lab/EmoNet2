@@ -34,7 +34,16 @@ pip install -r requirements.txt
 
 e. Install DeepSpeed
 
-Note that, installing Deepspeed is not comfortable someone, please refer [official github](https://github.com/microsoft/DeepSpeed)
+
+Please check for install [DeepSpeed official github](https://github.com/microsoft/DeepSpeed)
+
+First you need libaio-dev. please install by
+
+```shell
+sudo apt-get install libaio-dev
+```
+
+After this, install deepspeed by 
 
 ```shell
 bash install.sh
@@ -45,7 +54,7 @@ bash install.sh
 
 a. Prepare data 
 
-- root_path: Original KEMD19 path Ex) /home/ubuntu/data/KEMD_19/
+- root_path: original KEMD19 path Ex) /home/ubuntu/data/KEMD_19/
 - save_path: save folder, default: ./data/
 
 ```shell
@@ -74,7 +83,7 @@ Check your GPU, and change train_hf.sh and configs properly.
 You can run tensorboard 
 
 ```shell
-tensorboard --logdir ./output/log/audio_ce/version_0
+tensorboard --logdir ./output/log/tensorboard_what_you_want/version_0/
 ```
 
 # Inference
@@ -85,7 +94,8 @@ First you need to collate the model weights using
 python make_model_weights.py
 ```
 
-Because this repository use deepspeed stage 2, model weights sharded between gpus. After that,
+Because this repository use deepspeed stage 2, model weights sharded between gpus. So you need to make sharded checkpoints as one.
+After this,
 
 ```shell
 CUDA_VISIBLE_DEVICES=0 python inference.py

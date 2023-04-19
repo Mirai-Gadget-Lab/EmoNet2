@@ -1,7 +1,4 @@
 import os
-from models.pl_model_hf import *
-
-import os
 from models.pl_model_hf import PL_model
 import pytorch_lightning as pl
 from dataset_hf import *
@@ -13,17 +10,17 @@ from torch.utils.data import DataLoader
 from transformers import AutoTokenizer, Wav2Vec2Processor
 from pytorch_lightning.callbacks import LearningRateMonitor
 from omegaconf import OmegaConf as OC
-from pytorch_lightning.strategies import DeepSpeedStrategy
-
+from utils import str2bool
 def define_argparser():
     p = argparse.ArgumentParser()
     p.add_argument("-t", '--train_config', default='./configs/train.yaml', type=str)
     p.add_argument("-p", '--preprocess_config', default='./configs/preprocess.yaml', type=str)
     p.add_argument('--exp_name', required=True, type=str)
     p.add_argument('--using_model', required=True, type=str)
+    p.add_argument('--using_contra', required=True, type=str2bool, nargs='?', const=True, default=False)
+    p.add_argument('--using_cma', required=True, type=str2bool, nargs='?', const=True, default=False,)
     p.add_argument('--batch_size', type=int, default=64)
     p.add_argument('--accumulate_grad', type=int, default=1)
-    p.add_argument('--loss', type=str, default="ce")
     config = p.parse_args()
 
     return config
@@ -38,7 +35,9 @@ def main(args):
     train_config['path']['exp_name'] = args.exp_name
     train_config['optimizer']['batch_size'] = args.batch_size
     train_config['trainer']['grad_acc'] = args.accumulate_grad
+    train_config['model']['using_cma'] = args.using_cma
     train_config['model']['using_model'] = args.using_model
+    train_config['model']['using_contra'] = args.using_contra
     # Load train and validation data
     csv = pd.read_csv(preprocess_config['path']['csv_path'])
     csv = csv.drop_duplicates(subset=['segment_id'], ignore_index=True)
@@ -46,14 +45,14 @@ def main(args):
     csv['wav_length'] = csv['wav_end'] - csv['wav_start']
     csv = csv.query("wav_length <= %d"%25)
     dev, _ = train_test_split(csv, test_size=0.2, random_state=1004, stratify=csv['emotion'])
-    train, val = train_test_split(dev, test_size=0.1, random_state=1004, stratify=dev['emotion'])
+    train, val = train_test_split(dev, test_size=0.2, random_state=1004, stratify=dev['emotion'])
     
     text_tokenizer = AutoTokenizer.from_pretrained(train_config['model']['text_encoder'])
     audio_processor = Wav2Vec2Processor.from_pretrained(train_config['model']['audio_processor'])
     
     train_dataset = multimodal_dataset(train, preprocess_config)
     val_dataset = multimodal_dataset(val, preprocess_config)
-    
+
     print(
         '|train| =', len(train_dataset),
         '|valid| =', len(val_dataset),
@@ -83,21 +82,18 @@ def main(args):
         drop_last=True, shuffle=False
     )
         
+        
     # Load model and configuration.
+    model = PL_model(train_config)
     
-    if args.loss == "ce":
-        model = PL_model_ce(train_config)
-    elif args.loss == "cs_and_ce":
-        model = PL_model(train_config)
-    else:
-        raise "WrongLossName"
     setattr(model, 'train_dataloader', lambda: train_loader)
     setattr(model, 'val_dataloader', lambda: val_loader)
-        
+    
+
     checkpoint_callback = plc.ModelCheckpoint(
-        monitor="val_loss",
+        monitor="val_emotion_loss",
         dirpath=os.path.join(train_config['path']['ckpt_path'], train_config['path']['exp_name']),
-        filename="{step:06d}-{val_loss:.5f}",
+        filename="{step:06d}-{val_emotion_loss:.5f}",
         save_top_k=1,
         mode="min",
         every_n_train_steps=train_config['step']['total_step'] // 10 

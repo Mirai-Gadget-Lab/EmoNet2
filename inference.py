@@ -15,20 +15,17 @@ from glob import glob
 def define_argparser():
     p = argparse.ArgumentParser()
     p.add_argument('--model_save_path', default='./output/ckpt/', type=str)
+    p.add_argument('--config_path', default='./output/log/', type=str)
     p.add_argument('--train_config', default='./configs/train.yaml', type=str)
     p.add_argument('--preprocess_config', default='./configs/preprocess.yaml', type=str)
-    p.add_argument('--out_path', default='./result/metrics.csv', type=str)
+    p.add_argument('--out_path', default='./result/metrics_2.csv', type=str)
     config = p.parse_args()
 
     return config
 
-def predict(trainer, loader, train_config, ckp_path, loss=None):
+def predict(trainer, loader, train_config, ckp_path):
     print("inference_start from model:", ckp_path) 
-    if loss == 'ce':
-        model = PL_model_ce(train_config).load_from_checkpoint(ckp_path)
-        model.predict_step = predict_step.__get__(model)
-    else:
-        model = PL_model(train_config).load_from_checkpoint(ckp_path)
+    model = PL_model(train_config).load_from_checkpoint(ckp_path)
     predictions = trainer.predict(model, loader)
     preds = [i[0] for i in predictions]
     labels = [i[1] for i in predictions]
@@ -37,12 +34,6 @@ def predict(trainer, loader, train_config, ckp_path, loss=None):
     f1 = f1_score(labels, np.argmax(preds, axis=1), average='weighted')
     acc = accuracy_score(labels, np.argmax(preds, axis=1))
     return f1, acc
-    
-def predict_step(self, batch, batch_idx=0, dataloader_idx=0):
-    text_inputs, audio_inputs, labels = batch
-    pred = self.forward(text_inputs, audio_inputs)
-    pred = nn.functional.softmax(pred, dim=1)
-    return pred, labels['emotion']
 
 # %%
 def main(args):
@@ -66,32 +57,18 @@ def main(args):
     trainer = Trainer(gpus=1,
                     logger=False)
     
-    ckpt_path = sorted(glob(os.path.join(args.model_save_path,'*_ce')))
-    
+    # ckpt_path = sorted(glob(os.path.join(args.model_save_path, '*')))
+    ckpt_path = [os.path.join(args.model_save_path, 'both_cma'), os.path.join(args.model_save_path, 'both_contra')]
     dict_ls = []
     for path in ckpt_path:
-        model_name = os.path.basename(path).replace("_ce", "")
-        train_config['model']['using_model'] = model_name
+        model_name = os.path.basename(path)
+        config_path = sorted(glob(os.path.join(args.config_path, model_name+'/*/hparams.yaml')))[0]
         weight_path = os.path.join(path, "model_weights/lightning_model.pt")
-        
-        f1, acc = predict(trainer, test_loader, train_config, weight_path, loss='ce')
-        
-        dict_ls.append({
-            "model" : model_name,
-            "loss" : "cross_entropy",
-            "accuracy": acc,
-            "f1_score": f1,
-        })
-    
-    ckpt_path = sorted(glob(os.path.join(args.model_save_path,'*_contra')))
-    for path in ckpt_path:
-        model_name = path
-        weight_path = os.path.join(path, "model_weights/lightning_model.pt")
+        train_config = OC.load(config_path)['train_config']
         f1, acc = predict(trainer, test_loader, train_config, weight_path)
         
         dict_ls.append({
             "model" : model_name,
-            "loss" : "cross_entropy",
             "accuracy": acc,
             "f1_score": f1,
         })

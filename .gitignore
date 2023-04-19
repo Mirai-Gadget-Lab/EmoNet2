@@ -1,4 +1,4 @@
 data/*
 models_zoo/*
-output/*
+output*/*
 __pycache__/
