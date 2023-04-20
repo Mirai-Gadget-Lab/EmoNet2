@@ -91,11 +91,12 @@ def main(args):
     
 
     checkpoint_callback = plc.ModelCheckpoint(
-        monitor="val_emotion_loss",
+        monitor="val/emotion_loss",
         dirpath=os.path.join(train_config['path']['ckpt_path'], train_config['path']['exp_name']),
-        filename="{step:06d}-{val_emotion_loss:.5f}",
+        filename="step={step:06d}-val_emotion_loss={val/emotion_loss:.5f}",
         save_top_k=1,
         mode="min",
+        auto_insert_metric_name=False,
         every_n_train_steps=train_config['step']['total_step'] // 10 
     )
     logger = TensorBoardLogger(

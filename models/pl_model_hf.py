@@ -30,10 +30,10 @@ class PL_model(pl.LightningModule):
         
         self.train_accuracy(emo_out, labels['emotion'])
         loss = emo_loss + contra_loss
-        self.log("train_full_loss",  loss, on_epoch=False, on_step=True)
-        self.log("train_emotion_loss",  emo_loss, on_epoch=False, on_step=True)
-        self.log("train_contrastive_loss",  contra_loss, on_epoch=False, on_step=True)
-        self.log("train_emotion_accuracy",  self.train_accuracy, on_epoch=False, on_step=True)
+        self.log("train/full_loss",  loss, on_epoch=False, on_step=True)
+        self.log("train/emotion_loss",  emo_loss, on_epoch=False, on_step=True)
+        self.log("train/contrastive_loss",  contra_loss, on_epoch=False, on_step=True)
+        self.log("train/emotion_accuracy",  self.train_accuracy, on_epoch=False, on_step=True)
         
         return loss
 
@@ -45,10 +45,10 @@ class PL_model(pl.LightningModule):
         self.valid_accuracy(emo_out, labels['emotion'])
         
         loss = emo_loss + contra_loss
-        self.log("val_full_loss",  loss, on_epoch=True, on_step=False, sync_dist=True)
-        self.log("val_emotion_loss",  emo_loss, on_epoch=True, on_step=False, sync_dist=True)
-        self.log("val_contrastive_loss",  contra_loss, on_epoch=True, on_step=False, sync_dist=True)
-        self.log("val_emotion_accuracy",  self.valid_accuracy, on_epoch=True, on_step=False, sync_dist=True)
+        self.log("val/full_loss",  loss, on_epoch=True, on_step=False, sync_dist=True)
+        self.log("val/emotion_loss",  emo_loss, on_epoch=True, on_step=False, sync_dist=True)
+        self.log("val/contrastive_loss",  contra_loss, on_epoch=True, on_step=False, sync_dist=True)
+        self.log("val/emotion_accuracy",  self.valid_accuracy, on_epoch=True, on_step=False, sync_dist=True)
         
     def predict_step(self, batch, batch_idx=0, dataloader_idx=0):
         text_inputs, audio_inputs, labels = batch
