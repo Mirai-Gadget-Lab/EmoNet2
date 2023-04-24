@@ -45,7 +45,7 @@ sudo apt-get install libaio-dev
 After this, install deepspeed by 
 
 ```shell
-bash install.sh
+DS_BUILD_CPU_ADAM=1 DS_BUILD_FUSED_ADAM=1 DS_BUILD_UTILS=1 DS_BUILD_AIO=1 pip install deepspeed==0.9.0 --global-option="build_ext" --global-option="-j11" --no-cache-dir
 ```
 
 Please check for detail installation [DeepSpeed official github](https://github.com/microsoft/DeepSpeed)
