@@ -88,13 +88,13 @@ tensorboard --logdir ./output/log/tensorboard_what_you_want/version_0/
 
 # Inference
 
-First you need to collate the model weights using
+Because this repository use deepspeed stage 2, model weights sharded between gpus. So you need to make sharded checkpoints as one.
+You need to collate the model weights using
 
 ```shell
 python make_model_weights.py
 ```
 
-Because this repository use deepspeed stage 2, model weights sharded between gpus. So you need to make sharded checkpoints as one.
 After this,
 
 ```shell
@@ -104,6 +104,7 @@ CUDA_VISIBLE_DEVICES=0 python inference.py
 # Result
 
 In table, CE means cross entropy and CA means contrastive loss repectively.
+
 Multimodal(CAT) represents using concatenate for multimodal modeling and Multimodal(CMA) represents using cross modal attention respectively.
 
 <img src="result/metric.png" width=900> 
